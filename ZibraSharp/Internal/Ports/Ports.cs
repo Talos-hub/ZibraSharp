@@ -63,5 +63,27 @@ namespace ZibraSharp.Internal.Ports
         public void UpLoadFile(Stream file);
     }
 
+    /// <summary>
+    /// An interface that provides configuration for this application
+    /// </summary>
+    public interface IConfig
+    {
+        /// <summary>
+        ///Adding extensions that the application does not scan and does not include in the archive
+        /// </summary>
+        public void AddExtentions();
+        /// <summary>
+        /// Remove extiontions from the file extentions 
+        /// </summary>
+        /// <param name="exten"></param>
+        public void RemoveExtentions(string exten);
+        /// <summary>
+        /// A method that loads file extensions into memory
+        /// </summary>
+        /// <returns>HashSet containing extensions</returns>
+        public HashSet<string> GetExtentions();
+
+    }
+
     
 }
