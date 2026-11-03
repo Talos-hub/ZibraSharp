@@ -11,7 +11,7 @@ namespace ZibraSharp.Internal.Ports
     {
         // This dir we will scan and send to IArchiver
         public string PathToDir { get; }
-        public string Walk();
+        public IEnumerable<string> Walk();
     }
 
     // an Interface that provides the logic of an Archiver.
