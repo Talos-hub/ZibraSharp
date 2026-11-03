@@ -6,22 +6,36 @@ using System.Threading.Tasks;
 
 namespace ZibraSharp.Internal.Ports
 {
-    // Walker walk to dir and returns pathes to files
+    /// <summary>
+    /// Walker walk to dir and returns pathes to files.
+    /// </summary>
     public interface IWalker
     {
-        // This dir we will scan and send to IArchiver
+
         public string PathToDir { get; }
+        /// <summary>
+        /// walk to dir and returns pathes to files.
+        /// </summary>
+        /// <param name="dir">Directory to walk.</param>
+        /// <returns>Collection of file paths.</returns>
         public IEnumerable<string> Walk();
     }
 
-    // an Interface that provides the logic of an Archiver.
+    /// <summary>
+    /// an Interface that provides the logic of an Archiver.
+    /// </summary>
     public interface IArchiver
     {
-        //it create archive and return a path to that one 
+        /// <summary>
+        /// it create archive and return a path to that one 
+        /// </summary>
+        /// <returns>path to the archive</returns>
         public string BeginArchiving();
     }
 
-    // Interface that provides the logging logic for the app
+    /// <summary>
+    /// Interface that provides the logging logic for the app
+    /// </summary>
     public interface ILogger
     {
         public void Info(string message, Exception e);
@@ -29,6 +43,24 @@ namespace ZibraSharp.Internal.Ports
         public void Debug(string message, Exception e);
         public void Error(string message, Exception e);
 
+    }
+    /// <summary>
+    /// Provides logic for working with the cloud—this could be 
+    /// Google Cloud or another cloud platform.
+    /// </summary>
+    public interface IApiCloud
+    {
+        /// <summary>
+        /// Check if the connection is working
+        /// </summary>
+        /// <returns>If this method returns true, 
+        /// it means the connection is fine.</returns>
+        public bool CheckConnection();
+        /// <summary>
+        /// Up load a file to a cloud
+        /// </summary>
+        /// <param name="file">this is an archive or a file </param>
+        public void UpLoadFile(Stream file);
     }
 
     
