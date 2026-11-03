@@ -9,6 +9,8 @@ namespace ZibraSharp.Internal.Ports
     // Walker walk to dir and returns pathes to files
     public interface IWalker
     {
+        // This dir we will scan and send to IArchiver
+        public string PathToDir { get; }
         public string Walk();
     }
 
