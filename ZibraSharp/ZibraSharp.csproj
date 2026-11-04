@@ -12,7 +12,6 @@
     <Folder Include="Internal\Api\" />
     <Folder Include="Internal\Logger\" />
     <Folder Include="Internal\Archivers\" />
-    <Folder Include="Internal\Wolkers\" />
     <Folder Include="Internal\Services\" />
   </ItemGroup>
 

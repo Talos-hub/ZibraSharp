@@ -71,7 +71,7 @@ namespace ZibraSharp.Internal.Ports
         /// <summary>
         ///Adding extensions that the application does not scan and does not include in the archive
         /// </summary>
-        public void AddExtentions();
+        public void AddExtentions(IEnumerable<string> ext);
         /// <summary>
         /// Remove extiontions from the file extentions 
         /// </summary>
@@ -82,6 +82,10 @@ namespace ZibraSharp.Internal.Ports
         /// </summary>
         /// <returns>HashSet containing extensions</returns>
         public HashSet<string> GetExtentions();
+        /// <summary>
+        /// 
+        /// </summary>
+        public void SetConfig();
 
     }
 

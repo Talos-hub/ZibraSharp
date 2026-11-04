@@ -43,7 +43,6 @@ namespace ZibraSharp.Internal.Wolkers
         {
             throw new NotImplementedException();
 
-             
         }
     }
 }
