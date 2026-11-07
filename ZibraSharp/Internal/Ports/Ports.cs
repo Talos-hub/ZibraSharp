@@ -7,14 +7,14 @@ using System.Threading.Tasks;
 namespace ZibraSharp.Internal.Ports
 {
     /// <summary>
-    /// Walker walk to dir and returns pathes to files.
+    /// Walker walks to dir and returns paths to files.
     /// </summary>
     public interface IWalker
     {
 
         public string PathToDir { get; }
         /// <summary>
-        /// walk to dir and returns pathes to files.
+        /// Walks to dir and returns paths to files.
         /// </summary>
         /// <param name="dir">Directory to walk.</param>
         /// <returns>Collection of file paths.</returns>
@@ -57,10 +57,10 @@ namespace ZibraSharp.Internal.Ports
         /// it means the connection is fine.</returns>
         public bool CheckConnection();
         /// <summary>
-        /// Up load a file to a cloud
+        /// Upload a file to a cloud
         /// </summary>
         /// <param name="file">this is an archive or a file </param>
-        public void UpLoadFile(Stream file);
+        public void UploadFile(Stream file);
     }
 
     /// <summary>
@@ -71,17 +71,17 @@ namespace ZibraSharp.Internal.Ports
         /// <summary>
         ///Adding extensions that the application does not scan and does not include in the archive
         /// </summary>
-        public void AddExtentions(IEnumerable<string> ext);
+        public void AddExtensions(IEnumerable<string> ext);
         /// <summary>
-        /// Remove extiontions from the file extentions 
+        /// Remove extensions from the file extensions 
         /// </summary>
-        /// <param name="exten"></param>
-        public void RemoveExtentions(string exten);
+        /// <param name="extension"></param>
+        public void RemoveExtensions(string extension);
         /// <summary>
         /// A method that loads file extensions into memory
         /// </summary>
         /// <returns>HashSet containing extensions</returns>
-        public HashSet<string> GetExtentions();
+        public HashSet<string> GetExtensions();
         /// <summary>
         /// 
         /// </summary>

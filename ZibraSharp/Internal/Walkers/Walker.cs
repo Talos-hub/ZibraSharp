@@ -5,12 +5,12 @@ using System.Text;
 using System.Threading.Tasks;
 using ZibraSharp.Internal.Ports;
 
-namespace ZibraSharp.Internal.Wolkers
+namespace ZibraSharp.Internal.Walkers
 {
     /// <summary>
-    /// This class implements the IWolker interface — logic for scanning directories.
+    /// This class implements the IWalker interface — logic for scanning directories.
     /// </summary>
-    public class Wolker : IWalker
+    public class Walker : IWalker
     {
         /// <summary>
         /// It is the path to dir that we want to scan
@@ -21,11 +21,11 @@ namespace ZibraSharp.Internal.Wolkers
         /// </summary>
         private EnumerationOptions _options;
 
-        public Wolker(string pathToDir)
+        public Walker(string pathToDir)
         {
             PathToDir = pathToDir ?? throw new ArgumentNullException(nameof(pathToDir));
 
-            // set up otions
+            // set up options
             _options = new EnumerationOptions
             {
                 RecurseSubdirectories = true, // All Dirs
@@ -46,4 +46,3 @@ namespace ZibraSharp.Internal.Wolkers
         }
     }
 }
-
