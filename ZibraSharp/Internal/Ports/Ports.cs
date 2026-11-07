@@ -1,93 +1,112 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace ZibraSharp.Internal.Ports
 {
     /// <summary>
-    /// Walker walks to dir and returns paths to files.
+    /// Walks a directory and returns paths to files.
     /// </summary>
     public interface IWalker
     {
-
-        public string PathToDir { get; }
         /// <summary>
-        /// Walks to dir and returns paths to files.
+        /// Walks the configured directory and returns paths to all files.
         /// </summary>
-        /// <param name="dir">Directory to walk.</param>
-        /// <returns>Collection of file paths.</returns>
-        public IEnumerable<string> Walk();
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Materialized collection of file paths.</returns>
+        Task<IReadOnlyList<string>> WalkAsync(CancellationToken ct = default);
     }
 
     /// <summary>
-    /// an Interface that provides the logic of an Archiver.
+    /// Creates an archive from the given files.
     /// </summary>
     public interface IArchiver
     {
         /// <summary>
-        /// it create archive and return a path to that one 
+        /// Creates a new archive and adds the given files to it.
         /// </summary>
-        /// <returns>path to the archive</returns>
-        public string BeginArchiving();
+        /// <param name="paths">Paths to the files that must be archived.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Full path to the created archive.</returns>
+        Task<string> StartAsync(IReadOnlyList<string> paths, CancellationToken ct = default);
     }
 
     /// <summary>
-    /// Interface that provides the logging logic for the app
+    /// Provides the logging logic for the application.
     /// </summary>
     public interface ILogger
     {
-        public void Info(string message, Exception e);
-        public void Warn(string message, Exception e);
-        public void Debug(string message, Exception e);
-        public void Error(string message, Exception e);
-
+        void Info(string message, params object?[] args);
+        void Warn(string message, params object?[] args);
+        void Debug(string message, params object?[] args);
+        void Error(string message, params object?[] args);
+        void Error(Exception exception, string message, params object?[] args);
     }
+
     /// <summary>
-    /// Provides logic for working with the cloud—this could be 
-    /// Google Cloud or another cloud platform.
+    /// Provides logic for working with the cloud — Google Drive or another cloud platform.
     /// </summary>
     public interface IApiCloud
     {
         /// <summary>
-        /// Check if the connection is working
+        /// Checks that the cloud is reachable and the credentials are valid.
         /// </summary>
-        /// <returns>If this method returns true, 
-        /// it means the connection is fine.</returns>
-        public bool CheckConnection();
+        /// <exception cref="Exceptions.AppException">Thrown when the cloud is unavailable.</exception>
+        Task CheckAsync(CancellationToken ct = default);
+
         /// <summary>
-        /// Upload a file to a cloud
+        /// Uploads a file to the cloud.
         /// </summary>
-        /// <param name="file">this is an archive or a file </param>
-        public void UploadFile(Stream file);
+        /// <param name="filePath">Full path to the file to upload.</param>
+        /// <param name="ct">Cancellation token.</param>
+        Task UploadFileAsync(string filePath, CancellationToken ct = default);
     }
 
     /// <summary>
-    /// An interface that provides configuration for this application
+    /// Stores archives that could not be uploaded (callback mechanism).
+    /// On the next application run these archives are offered for re-upload.
     /// </summary>
-    public interface IConfig
+    public interface IPendingUploadStore
     {
-        /// <summary>
-        ///Adding extensions that the application does not scan and does not include in the archive
-        /// </summary>
-        public void AddExtensions(IEnumerable<string> ext);
-        /// <summary>
-        /// Remove extensions from the file extensions 
-        /// </summary>
-        /// <param name="extension"></param>
-        public void RemoveExtensions(string extension);
-        /// <summary>
-        /// A method that loads file extensions into memory
-        /// </summary>
-        /// <returns>HashSet containing extensions</returns>
-        public HashSet<string> GetExtensions();
-        /// <summary>
-        /// 
-        /// </summary>
-        public void SetConfig();
-
+        Task<IReadOnlyList<string>> GetAllAsync(CancellationToken ct = default);
+        Task AddAsync(string archivePath, CancellationToken ct = default);
+        Task RemoveAsync(string archivePath, CancellationToken ct = default);
     }
 
-    
+    /// <summary>
+    /// Orchestrates the backup flow: scan → archive → upload.
+    /// </summary>
+    public interface IService
+    {
+        /// <summary>
+        /// Runs the full backup flow. If the cloud is unavailable the archive is kept
+        /// and registered in <see cref="IPendingUploadStore"/> for a later retry.
+        /// </summary>
+        Task<ServiceResult> RunAsync(CancellationToken ct = default);
+
+        /// <summary>
+        /// Returns archives waiting for upload.
+        /// </summary>
+        Task<IReadOnlyList<string>> GetPendingAsync(CancellationToken ct = default);
+
+        /// <summary>
+        /// Tries to upload all pending archives.
+        /// </summary>
+        Task UploadPendingAsync(CancellationToken ct = default);
+    }
+
+    /// <summary>
+    /// Result of a backup run.
+    /// </summary>
+    public enum ServiceStatus
+    {
+        /// <summary>Archive was created and uploaded successfully.</summary>
+        Completed,
+
+        /// <summary>Archive was created but the upload failed; it is saved for later.</summary>
+        PendingUpload
+    }
+
+    public sealed record ServiceResult(ServiceStatus Status, string ArchivePath, Exception? Error = null);
 }

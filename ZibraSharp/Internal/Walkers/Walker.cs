@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
+using ZibraSharp.Internal.Exceptions;
 using ZibraSharp.Internal.Ports;
 
 namespace ZibraSharp.Internal.Walkers
@@ -10,39 +11,54 @@ namespace ZibraSharp.Internal.Walkers
     /// <summary>
     /// This class implements the IWalker interface — logic for scanning directories.
     /// </summary>
-    public class Walker : IWalker
+    public sealed class Walker : IWalker
     {
         /// <summary>
-        /// It is the path to dir that we want to scan
+        /// It is the path to dir that we want to scan.
         /// </summary>
-        public string PathToDir { get; }
+        private readonly string _pathToDir;
+
         /// <summary>
-        /// options for scanning a dir
+        /// Options for scanning a dir.
         /// </summary>
-        private EnumerationOptions _options;
+        private readonly EnumerationOptions _options;
 
         public Walker(string pathToDir)
         {
-            PathToDir = pathToDir ?? throw new ArgumentNullException(nameof(pathToDir));
+            _pathToDir = pathToDir ?? throw new ArgumentNullException(nameof(pathToDir));
 
             // set up options
             _options = new EnumerationOptions
             {
                 RecurseSubdirectories = true, // All Dirs
-                IgnoreInaccessible = true, 
+                IgnoreInaccessible = true,
                 AttributesToSkip = FileAttributes.System, // skip system files
                 MatchCasing = MatchCasing.CaseInsensitive
             };
         }
+
         /// <summary>
-        /// This method scans the directory
+        /// This method scans the directory.
         /// </summary>
         /// <returns>A collection containing file paths.</returns>
-        /// <exception cref="Exception"></exception>
-        public IEnumerable<string> Walk()
+        public Task<IReadOnlyList<string>> WalkAsync(CancellationToken ct = default)
         {
-            throw new NotImplementedException();
+            if (!Directory.Exists(_pathToDir))
+            {
+                throw new AppException(
+                    AppErrorCode.Open,
+                    nameof(WalkAsync),
+                    $"Directory does not exist: {_pathToDir}");
+            }
 
+            var paths = new List<string>();
+            foreach (var file in Directory.EnumerateFiles(_pathToDir, "*", _options))
+            {
+                ct.ThrowIfCancellationRequested();
+                paths.Add(file);
+            }
+
+            return Task.FromResult<IReadOnlyList<string>>(paths);
         }
     }
 }
