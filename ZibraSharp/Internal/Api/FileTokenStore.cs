@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Apis.Util.Store;
+using ZibraSharp.Internal.IO;
 
 namespace ZibraSharp.Internal.Api
 {
@@ -30,16 +31,12 @@ namespace ZibraSharp.Internal.Api
             await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
-                EnsureDirectory();
-                await using var stream = new FileStream(
+                await AtomicFile.WriteAsync(
                     _filePath,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None,
-                    4096,
-                    FileOptions.Asynchronous);
+                    (stream, _) => JsonSerializer.SerializeAsync(stream, value, JsonOptions))
+                    .ConfigureAwait(false);
 
-                await JsonSerializer.SerializeAsync(stream, value, JsonOptions).ConfigureAwait(false);
+                RestrictPermissions();
             }
             finally
             {
@@ -105,12 +102,27 @@ namespace ZibraSharp.Internal.Api
             await DeleteAsync<object>("").ConfigureAwait(false);
         }
 
-        private void EnsureDirectory()
+        private void RestrictPermissions()
         {
-            var directory = Path.GetDirectoryName(_filePath);
-            if (!string.IsNullOrEmpty(directory))
+            if (OperatingSystem.IsWindows())
             {
-                Directory.CreateDirectory(directory);
+                return;
+            }
+
+            try
+            {
+                // OAuth tokens are secrets: owner read/write only.
+                File.SetUnixFileMode(
+                    _filePath,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+            catch (IOException)
+            {
+                // Best effort; the token is still usable.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best effort; the token is still usable.
             }
         }
     }

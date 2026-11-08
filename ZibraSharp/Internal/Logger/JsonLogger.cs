@@ -28,6 +28,8 @@ namespace ZibraSharp.Internal.Logger
     public sealed class JsonLogger : ILogger, IDisposable
     {
         public const string DefaultFileName = "zibra.log";
+        public const long DefaultMaxFileSizeBytes = 10 * 1024 * 1024;
+        public const int DefaultMaxFiles = 5;
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -38,25 +40,39 @@ namespace ZibraSharp.Internal.Logger
         private readonly string _filePath;
         private readonly LogLevel _minimumLevel;
         private readonly TextWriter? _consoleWriter;
+        private readonly long _maxFileSizeBytes;
+        private readonly int _maxFiles;
         private StreamWriter? _writer;
+        private long _currentSize;
         private bool _disposed;
 
         /// <param name="filePath">Path to the JSON-lines log file. Parent directories are created automatically.</param>
         /// <param name="minimumLevel">Events below this level are ignored.</param>
         /// <param name="consoleWriter">When not null, every event is mirrored to this writer (for example <see cref="Console.Out"/>).</param>
+        /// <param name="maxFileSizeBytes">Rotate the log when it exceeds this size. 0 or less disables rotation.</param>
+        /// <param name="maxFiles">Number of rotated files to keep (zibra.1.log … zibra.N.log).</param>
         public JsonLogger(
             string filePath,
             LogLevel minimumLevel = LogLevel.Info,
-            TextWriter? consoleWriter = null)
+            TextWriter? consoleWriter = null,
+            long maxFileSizeBytes = DefaultMaxFileSizeBytes,
+            int maxFiles = DefaultMaxFiles)
         {
             if (string.IsNullOrWhiteSpace(filePath))
             {
                 throw new ArgumentException("Log file path must not be empty.", nameof(filePath));
             }
 
+            if (maxFiles < 1)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxFiles), "At least one rotated file must be kept.");
+            }
+
             _filePath = Path.GetFullPath(filePath);
             _minimumLevel = minimumLevel;
             _consoleWriter = consoleWriter;
+            _maxFileSizeBytes = maxFileSizeBytes;
+            _maxFiles = maxFiles;
         }
 
         public void Debug(string message, params object?[] args) => Write(LogLevel.Debug, message, args, null);
@@ -101,8 +117,81 @@ namespace ZibraSharp.Internal.Logger
                 }
 
                 _writer ??= CreateWriter();
+
+                if (ShouldRotate(line))
+                {
+                    Rotate();
+                }
+
                 _writer.WriteLine(line);
+                _currentSize += Encoding.UTF8.GetByteCount(line) + Environment.NewLine.Length;
                 _consoleWriter?.WriteLine(line);
+            }
+        }
+
+        private bool ShouldRotate(string line)
+        {
+            if (_maxFileSizeBytes <= 0 || _currentSize == 0)
+            {
+                return false;
+            }
+
+            var lineSize = Encoding.UTF8.GetByteCount(line) + Environment.NewLine.Length;
+            return _currentSize + lineSize > _maxFileSizeBytes;
+        }
+
+        private void Rotate()
+        {
+            _writer?.Dispose();
+            _writer = null;
+            _currentSize = 0;
+
+            // Drop the oldest file, then shift zibra.N.log → zibra.N+1.log.
+            var oldest = GetRotatedPath(_maxFiles);
+            TryDeleteFile(oldest);
+
+            for (var index = _maxFiles - 1; index >= 1; index--)
+            {
+                var source = GetRotatedPath(index);
+                var destination = GetRotatedPath(index + 1);
+                if (File.Exists(source))
+                {
+                    File.Move(source, destination, overwrite: true);
+                }
+            }
+
+            if (File.Exists(_filePath))
+            {
+                File.Move(_filePath, GetRotatedPath(1), overwrite: true);
+            }
+
+            _writer = CreateWriter();
+        }
+
+        private string GetRotatedPath(int index)
+        {
+            var directory = Path.GetDirectoryName(_filePath) ?? ".";
+            var name = Path.GetFileNameWithoutExtension(_filePath);
+            var extension = Path.GetExtension(_filePath);
+            return Path.Combine(directory, $"{name}.{index}{extension}");
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (IOException)
+            {
+                // Best effort cleanup.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best effort cleanup.
             }
         }
 
@@ -121,6 +210,8 @@ namespace ZibraSharp.Internal.Logger
                 FileShare.Read,
                 4096,
                 FileOptions.None);
+
+            _currentSize = stream.Length;
 
             return new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
             {

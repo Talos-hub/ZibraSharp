@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using ZibraSharp.Internal.IO;
 using ZibraSharp.Internal.Ports;
 
 namespace ZibraSharp.Internal.Services
@@ -113,21 +114,10 @@ namespace ZibraSharp.Internal.Services
 
         private async Task SaveAsync(IReadOnlyList<string> paths, CancellationToken ct)
         {
-            var directory = Path.GetDirectoryName(_filePath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            await using var stream = new FileStream(
+            await AtomicFile.WriteAsync(
                 _filePath,
-                FileMode.Create,
-                FileAccess.Write,
-                FileShare.None,
-                4096,
-                FileOptions.Asynchronous);
-
-            await JsonSerializer.SerializeAsync(stream, paths, JsonOptions, ct).ConfigureAwait(false);
+                (stream, token) => JsonSerializer.SerializeAsync(stream, paths, JsonOptions, token),
+                ct).ConfigureAwait(false);
         }
     }
 }

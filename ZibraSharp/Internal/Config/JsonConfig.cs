@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ZibraSharp.Internal.Exceptions;
+using ZibraSharp.Internal.IO;
 using ZibraSharp.Internal.Ports;
 
 namespace ZibraSharp.Internal.Config
@@ -225,23 +226,12 @@ namespace ZibraSharp.Internal.Config
 
         private static async Task WriteJsonAsync<T>(string path, T value, CancellationToken ct)
         {
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
             try
             {
-                await using var stream = new FileStream(
+                await AtomicFile.WriteAsync(
                     path,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.None,
-                    4096,
-                    FileOptions.Asynchronous);
-
-                await JsonSerializer.SerializeAsync(stream, value, JsonOptions, ct).ConfigureAwait(false);
+                    (stream, token) => JsonSerializer.SerializeAsync(stream, value, JsonOptions, token),
+                    ct).ConfigureAwait(false);
             }
             catch (IOException ex)
             {

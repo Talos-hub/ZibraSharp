@@ -201,5 +201,71 @@ namespace ZibraSharp.Tests.Logging
 
             Assert.Single(File.ReadAllLines(logPath));
         }
+
+        [Fact]
+        public void Rotation_CreatesBackupFiles_AndKeepsConfiguredCount()
+        {
+            using var temp = new TempDirectory();
+            var logPath = Path.Combine(temp.Path, "zibra.log");
+
+            using (var logger = new JsonLogger(
+                logPath,
+                LogLevel.Debug,
+                maxFileSizeBytes: 512,
+                maxFiles: 2))
+            {
+                for (var index = 0; index < 50; index++)
+                {
+                    logger.Info("event", "Index", index, "Payload", new string('x', 40));
+                }
+            }
+
+            Assert.True(File.Exists(logPath));
+            Assert.True(File.Exists(Path.Combine(temp.Path, "zibra.1.log")));
+            Assert.True(File.Exists(Path.Combine(temp.Path, "zibra.2.log")));
+            Assert.False(File.Exists(Path.Combine(temp.Path, "zibra.3.log")));
+
+            // Every rotated line must still be valid JSON.
+            foreach (var file in Directory.GetFiles(temp.Path, "zibra*.log"))
+            {
+                foreach (var line in File.ReadAllLines(file))
+                {
+                    using var document = JsonDocument.Parse(line);
+                    Assert.Equal("event", document.RootElement.GetProperty("msg").GetString());
+                }
+            }
+        }
+
+        [Fact]
+        public void Rotation_Disabled_WhenMaxFileSizeIsZero()
+        {
+            using var temp = new TempDirectory();
+            var logPath = Path.Combine(temp.Path, "zibra.log");
+
+            using (var logger = new JsonLogger(
+                logPath,
+                LogLevel.Debug,
+                maxFileSizeBytes: 0,
+                maxFiles: 2))
+            {
+                for (var index = 0; index < 20; index++)
+                {
+                    logger.Info("event", "Payload", new string('x', 100));
+                }
+            }
+
+            Assert.True(File.Exists(logPath));
+            Assert.False(File.Exists(Path.Combine(temp.Path, "zibra.1.log")));
+        }
+
+        [Fact]
+        public void Constructor_RejectsNonPositiveMaxFiles()
+        {
+            using var temp = new TempDirectory();
+            var logPath = Path.Combine(temp.Path, "zibra.log");
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new JsonLogger(logPath, LogLevel.Debug, maxFiles: 0));
+        }
     }
 }
