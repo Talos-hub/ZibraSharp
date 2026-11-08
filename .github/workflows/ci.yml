@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev/core
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore ZibraSharp/ZibraSharp.sln
+
+      - name: Build
+        run: dotnet build ZibraSharp/ZibraSharp.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test ZibraSharp.Tests/ZibraSharp.Tests.csproj --configuration Release --no-build --nologo
+
+      - name: List benchmarks
+        run: dotnet run --project ZibraSharp.Benchmarks/ZibraSharp.Benchmarks.csproj --configuration Release --no-build -- --list flat

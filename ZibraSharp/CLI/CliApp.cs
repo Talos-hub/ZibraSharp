@@ -111,6 +111,11 @@ namespace ZibraSharp.CLI
 
             try
             {
+                logger.Debug(
+                    "Command started",
+                    "Command", options.Command,
+                    "BaseDirectory", baseDirectory);
+
                 return options.Command switch
                 {
                     "start" => await StartAsync(
@@ -216,6 +221,14 @@ namespace ZibraSharp.CLI
                 error.WriteLine("Use --force to replace it.");
                 return ExitError;
             }
+
+            logger.Debug(
+                "Resolved start options",
+                "Directory", directory,
+                "Archive", archivePath,
+                "Workers", options.Workers,
+                "Force", options.Force,
+                "KeepArchive", options.KeepArchive);
 
             if (GoogleCredentialsLocator.Find() is null)
             {
@@ -419,7 +432,9 @@ namespace ZibraSharp.CLI
                 output.WriteLine($"Uploading {pending.Count} archive(s)...");
                 var results = await uploader.UploadPendingAsync(ct).ConfigureAwait(false);
                 PrintUploadSummary(results, output);
-                return ExitSuccess;
+                return results.Any(result => result.Status == ServiceStatus.PendingUpload)
+                    ? ExitPending
+                    : ExitSuccess;
             }
 
             var paths = await uploader.GetPendingAsync(ct).ConfigureAwait(false);

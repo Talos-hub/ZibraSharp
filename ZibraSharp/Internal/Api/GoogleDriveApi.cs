@@ -27,8 +27,11 @@ namespace ZibraSharp.Internal.Api
         {
             try
             {
-                var request = _service.About.Get();
-                request.Fields = "user";
+                // A cheap Drive API call that is allowed by the drive.file scope.
+                // About.Get may require broader scopes, so list one file instead.
+                var request = _service.Files.List();
+                request.PageSize = 1;
+                request.Fields = "files(id)";
                 await request.ExecuteAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)

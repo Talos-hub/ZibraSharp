@@ -423,6 +423,23 @@ namespace ZibraSharp.Tests.Cli
             Assert.Contains("Usage: zibrasharp start", result.Error);
         }
 
+        [Fact]
+        public async Task PendingUpload_WhenUploadFails_ReturnsPendingExitCode()
+        {
+            using var temp = new TempDirectory();
+            var archive = Path.Combine(temp.Path, "archive.zip");
+            await File.WriteAllTextAsync(archive, "archive");
+            await File.WriteAllTextAsync(
+                Path.Combine(temp.Path, "pending.json"),
+                JsonSerializer.Serialize(new[] { archive }));
+
+            var result = await RunAsync(temp.Path, string.Empty, "pending", "upload");
+
+            Assert.Equal(2, result.ExitCode);
+            Assert.Contains("Uploaded: 0, kept pending: 1", result.Output);
+            Assert.True(File.Exists(archive));
+        }
+
         private static async Task<CliResult> RunAsync(
             string baseDirectory,
             string input,
