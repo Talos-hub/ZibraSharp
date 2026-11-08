@@ -94,6 +94,7 @@ namespace ZibraSharp.Tests.TestSupport
     {
         public Exception? CheckException { get; set; }
         public Exception? UploadException { get; set; }
+        public Func<string, Exception?>? UploadExceptionFactory { get; set; }
         public int CheckCalls { get; private set; }
         public List<string> UploadedPaths { get; } = new();
 
@@ -110,9 +111,10 @@ namespace ZibraSharp.Tests.TestSupport
 
         public Task UploadFileAsync(string filePath, CancellationToken ct = default)
         {
-            if (UploadException is not null)
+            var exception = UploadExceptionFactory?.Invoke(filePath) ?? UploadException;
+            if (exception is not null)
             {
-                throw UploadException;
+                throw exception;
             }
 
             UploadedPaths.Add(filePath);
