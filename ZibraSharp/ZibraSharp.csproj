@@ -5,6 +5,15 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>zibrasharp</AssemblyName>
+    <RootNamespace>ZibraSharp</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>ZibraSharp</Authors>
+    <Description>Backup directories to Google Drive as ZIP archives.</Description>
+    <RepositoryType>git</RepositoryType>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
   </PropertyGroup>
 
   <ItemGroup>
