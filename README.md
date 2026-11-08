@@ -1,208 +1,537 @@
 # ZibraSharp
 
-Console utility that scans a directory, packs its files into a ZIP archive, and uploads the archive to Google Drive.
+Консольная утилита: сканирует папку, упаковывает файлы в ZIP-архив и загружает его в Google Drive.
 
-It is a C#/.NET 9 rewrite of the original Go tool. The archive format is compatible with the standard ZIP format (including ZIP64 and UTF-8 file names), so archives can be opened by any ZIP tool.
+Это переписанная на C#/.NET 9 версия оригинальной Go-утилиты. Архивы создаются в стандартном формате ZIP (поддерживаются ZIP64 и UTF-8 имена файлов), поэтому открываются любым архиватором.
 
-## Features
+## Содержание
 
-- Recursive directory scan with optional extension exclusions.
-- Real parallel compression: files are deflated by a worker pool, then assembled by a single writer.
-- ZIP64 support and UTF-8 entry names (Windows and Unix).
-- Atomic archive replacement: a new archive is written to a temporary file and moved into place only after it is complete.
-- Offline-friendly upload callback: if upload fails, the archive is kept and queued; the next run offers to upload it.
-- Structured JSON-lines logging with size-based rotation.
-- Atomic JSON writes for configuration and queue state.
-- Dry run, configurable worker count, overwrite protection, and Ctrl+C cancellation.
-- BenchmarkDotNet suite and xUnit test suite.
+- [Возможности](#возможности)
+- [Требования](#требования)
+- [Установка](#установка)
+- [Быстрый старт в Windows](#быстрый-старт-в-windows)
+- [Настройка Google Drive](#настройка-google-drive)
+- [Важно: рабочая папка](#важно-рабочая-папка)
+- [Все команды кратко](#все-команды-кратко)
+- [Команда start](#команда-start)
+- [Команда settings](#команда-settings)
+- [Команда extensions](#команда-extensions)
+- [Команда log](#команда-log)
+- [Команда pending](#команда-pending)
+- [Команды version и help](#команды-version-и-help)
+- [Глобальные флаги](#глобальные-флаги)
+- [Коды выхода](#коды-выхода)
+- [Рабочие файлы](#рабочие-файлы)
+- [Офлайн-режим и очередь загрузки](#офлайн-режим-и-очередь-загрузки)
+- [Логирование](#логирование)
+- [Разработка](#разработка)
+- [Бенчмарки](#бенчмарки)
+- [Структура проекта](#структура-проекта)
+- [Безопасность](#безопасность)
+- [Решение проблем](#решение-проблем)
 
-## Requirements
+## Возможности
 
-- .NET 9 SDK or runtime.
-- A Google Cloud OAuth client with the Google Drive API enabled.
+- Рекурсивное сканирование папки с исключением расширений.
+- Настоящее параллельное сжатие: файлы сжимаются пулом воркеров, затем собираются одним писателем.
+- Поддержка ZIP64 и UTF-8 имён.
+- Атомарная замена архива: новый архив пишется во временный файл и переносится на место только после успешной записи.
+- Офлайн-режим: если загрузка не удалась, архив сохраняется и попадает в очередь; при следующем запуске утилита предложит его загрузить.
+- Структурированные JSON-логи с ротацией.
+- Атомарная запись JSON-файлов состояния.
+- `--dry-run`, настройка числа воркеров, защита от перезаписи, отмена по Ctrl+C.
+- Тесты xUnit и бенчмарки BenchmarkDotNet.
 
-## Setup
+## Требования
 
-1. Create OAuth credentials (Desktop application) in Google Cloud Console and download the JSON file.
-2. Put the credentials file in one of these locations:
-   - `credentials.json` in the current working directory;
-   - the path from `CREDENTIALS_ZIBRA` or `CREDENTIALS_ZIBRASHARP`;
-   - `config/credentials.json` or `configuration/credentials.json` in the current working directory;
-   - `~/.ZibraSharp/credentials.json`.
-3. Configure the directory where archives are stored:
+- .NET 9 SDK или runtime.
+- Аккаунт Google.
+- Включённый Google Drive API в Google Cloud.
+- OAuth-клиент типа **Desktop app** (`credentials.json`).
 
-   ```bash
-   zibrasharp settings /path/to/backups
-   ```
+## Установка
 
-   Or run `zibrasharp settings` without arguments for an interactive prompt.
+Сборка из исходников:
 
-4. On the first upload, a browser window opens for OAuth consent. The token is stored in `token.json` next to the working directory. On Unix the token file is restricted to the owner (`0600`).
+```powershell
+dotnet build .\ZibraSharp\ZibraSharp.sln -c Release
+```
 
-## Usage
+Публикация в отдельную папку:
+
+```powershell
+dotnet publish .\ZibraSharp\ZibraSharp.csproj -c Release -o C:\ZibraSharp\app
+```
+
+После публикации исполняемый файл:
+
+```text
+C:\ZibraSharp\app\zibrasharp.exe
+```
+
+Опционально — self-contained сборка в один файл:
+
+```powershell
+dotnet publish .\ZibraSharp\ZibraSharp.csproj `
+  -c Release `
+  -r win-x64 `
+  --self-contained true `
+  -p:PublishSingleFile=true `
+  -o C:\ZibraSharp\app
+```
+
+Для Linux/macOS используй соответствующий RID, например `linux-x64` или `osx-arm64`.
+
+### Добавить в PATH
+
+Только для текущей сессии PowerShell:
+
+```powershell
+$env:Path += ";C:\ZibraSharp\app"
+```
+
+Навсегда для текущего пользователя:
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+    "Path",
+    [Environment]::GetEnvironmentVariable("Path", "User") + ";C:\ZibraSharp\app",
+    "User"
+)
+```
+
+После этого перезапусти PowerShell и проверь:
+
+```powershell
+zibrasharp --version
+```
+
+## Быстрый старт в Windows
+
+```powershell
+# 1. Перейти в постоянную рабочую папку
+cd C:\ZibraSharp
+
+# 2. Проверить запуск
+.\app\zibrasharp.exe --version
+
+# 3. Указать папку, куда складывать архивы
+.\app\zibrasharp.exe settings C:\Backups
+
+# 4. Положить credentials.json в C:\ZibraSharp\credentials.json
+
+# 5. Проверить сканирование без архивации и без credentials
+.\app\zibrasharp.exe start C:\Data --dry-run
+
+# 6. Первый реальный запуск — откроется браузер для OAuth
+.\app\zibrasharp.exe start C:\Data
+```
+
+> В PowerShell программы из текущей папки не запускаются по имени. Нужно `.\zibrasharp.exe` или полный путь. Если папка добавлена в `PATH`, можно писать просто `zibrasharp`.
+
+## Настройка Google Drive
+
+1. Открой [Google Cloud Console](https://console.cloud.google.com/).
+2. Создай проект или выбери существующий.
+3. Включи **Google Drive API**: `APIs & Services` → `Library` → `Google Drive API` → `Enable`.
+4. Настрой OAuth consent screen, если ещё не настроен.
+5. Создай OAuth-клиент: `APIs & Services` → `Credentials` → `Create credentials` → `OAuth client ID` → тип **Desktop app**.
+6. Скачай JSON и сохрани его как `credentials.json`.
+
+Используемый scope — `drive.file`: приложение видит только файлы, которые создало само.
+
+### Где ищется credentials.json
+
+По порядку:
+
+1. Явно указанный путь (сейчас CLI его не передаёт).
+2. Переменная окружения `CREDENTIALS_ZIBRA`.
+3. Переменная окружения `CREDENTIALS_ZIBRASHARP`.
+4. `credentials.json` в текущей рабочей папке.
+5. `config/credentials.json`, `configuration/credentials.json`, `settings/credentials.json`.
+6. `~/.ZibraSharp/credentials.json`.
+
+Проще всего — положить `credentials.json` в ту папку, из которой запускается утилита.
+
+### Токен
+
+При первой загрузке откроется браузер для согласия. Токен сохранится в `token.json` в текущей рабочей папке. На Unix файл получает права `0600` (только владелец).
+
+## Важно: рабочая папка
+
+Все рабочие файлы создаются **в текущей рабочей папке**, а не рядом с `.exe`:
+
+- `zipdir.json`
+- `extensions.json`
+- `pending.json`
+- `token.json`
+- `zibra.log`
+
+Поэтому запускай утилиту из постоянной папки, например `C:\ZibraSharp`, а не из `bin\Release\net9.0`.
+
+Пример:
+
+```powershell
+cd C:\ZibraSharp
+C:\ZibraSharp\app\zibrasharp.exe start C:\Data
+```
+
+## Все команды кратко
+
+| Команда | Назначение |
+|---|---|
+| `zibrasharp start [archive.zip] <directory> [options]` | Создать архив и загрузить его |
+| `zibrasharp settings [<path>] [--show]` | Настроить или показать папку для архивов |
+| `zibrasharp extensions [<extensions...>] [--list] [--remove]` | Настроить исключаемые расширения |
+| `zibrasharp log [--lines N]` | Показать последние строки лога |
+| `zibrasharp pending [upload]` | Показать очередь или загрузить её |
+| `zibrasharp version` / `zibrasharp --version` | Показать версию |
+| `zibrasharp help` / `zibrasharp --help` | Показать справку |
+
+Опции можно указывать после команды в любом порядке.
+
+## Команда start
 
 ```text
 zibrasharp start [archive.zip] <directory> [options]
-zibrasharp settings [<path>] [--show]
-zibrasharp extensions [<extensions...>] [--list] [--remove]
-zibrasharp log [--lines N]
-zibrasharp pending [upload]
-zibrasharp version | --version
-zibrasharp help
 ```
 
-### `start`
+Создаёт архив из `<directory>` и загружает его в Google Drive.
 
-Creates an archive from `<directory>` and uploads it.
+### Варианты вызова
 
-- With one positional argument (`start <directory>`) the archive name is generated automatically: `<directory-name>-yyyyMMdd-HHmmss.zip`.
-- With two positional arguments (`start <archive.zip> <directory>`) the archive name is explicit.
-
-Options:
-
-| Option | Description |
+| Команда | Что делает |
 |---|---|
-| `--yes`, `-y` | Upload pending archives without asking. |
-| `--dry-run` | Scan and report file count and size without creating an archive. Does not require configuration or credentials. |
-| `--force`, `-f` | Replace an existing archive. Without it, `start` refuses to overwrite. |
-| `--keep-archive` | Keep the archive on disk after a successful upload. |
-| `--workers N` | Number of compression workers. `0` (default) means one per CPU core. |
+| `start C:\Data` | Имя архива генерируется автоматически: `Data-yyyyMMdd-HHmmss.zip` |
+| `start backup.zip C:\Data` | Явное имя архива |
+| `start C:\Data --dry-run` | Только сканирование: количество файлов и суммарный размер |
+| `start C:\Data --force` | Перезаписать существующий архив |
+| `start C:\Data --keep-archive` | Оставить архив после успешной загрузки |
+| `start C:\Data --workers 8` | 8 потоков сжатия |
+| `start C:\Data --yes` | Не спрашивать про очередь pending |
 
-### `settings`
+### Опции start
 
-- `settings` — interactive prompt for the backup directory.
-- `settings <path>` — save the backup directory non-interactively.
-- `settings --show` — print the current backup directory and excluded extensions.
+| Опция | Алиас | Описание |
+|---|---|---|
+| `--yes` | `-y` | Загрузить pending-архивы без вопроса |
+| `--dry-run` | | Сканирование без архивации; не требует `zipdir.json` и `credentials.json` |
+| `--force` | `-f` | Разрешить перезапись существующего архива |
+| `--keep-archive` | | Не удалять архив после успешной загрузки |
+| `--workers N` | | Число потоков сжатия; `0` (по умолчанию) — по числу CPU |
 
-### `extensions`
+Также поддерживается форма `--workers=N`.
 
-- `extensions` — interactive prompt (space-separated list, for example `.exe .txt .json`).
-- `extensions .txt .exe` — save the list non-interactively.
-- `extensions --list` — print the current exclusions.
-- `extensions --remove` — delete the extensions file.
+### Поведение
 
-Extensions are *excluded* from scanning. Files without an extension are always included.
+1. Проверяет, что папка существует.
+2. Проверяет `zipdir.json` (кроме `--dry-run`).
+3. Проверяет `credentials.json` (кроме `--dry-run`).
+4. Проверяет, не существует ли уже архив; без `--force` завершается с подсказкой.
+5. Предлагает загрузить очередь pending (`--yes` — без вопроса).
+6. Сканирует папку и создаёт архив с прогрессом.
+7. Загружает архив.
+8. При успехе удаляет архив, если не указан `--keep-archive`.
+9. При ошибке загрузки оставляет архив и добавляет его в `pending.json`.
 
-### `log`
+### Коды результата
 
-Prints the last 50 JSON log lines by default:
+- `0` — архив создан и загружен.
+- `1` — ошибка конфигурации, валидации или архивации.
+- `2` — архив создан, но загрузка не удалась; архив сохранён в очереди.
+- `130` — отменено Ctrl+C.
 
-```bash
+## Команда settings
+
+```text
+zibrasharp settings
+zibrasharp settings <path>
+zibrasharp settings --show
+```
+
+| Команда | Что делает |
+|---|---|
+| `settings` | Интерактивно спрашивает путь |
+| `settings C:\Backups` | Сохраняет путь без вопросов |
+| `settings --show` | Показывает текущую папку и исключённые расширения |
+
+Путь должен существовать. Утилита не создаёт папку для архивов автоматически.
+
+## Команда extensions
+
+Расширения — это **исключения** из сканирования. Файлы без расширения всегда включаются.
+
+```text
+zibrasharp extensions
+zibrasharp extensions .txt .exe .log
+zibrasharp extensions --list
+zibrasharp extensions --remove
+```
+
+| Команда | Что делает |
+|---|---|
+| `extensions` | Интерактивный ввод |
+| `extensions .txt .exe` | Сохраняет список без вопросов |
+| `extensions --list` | Показывает текущие исключения |
+| `extensions --remove` | Удаляет файл расширений |
+
+Алиас `--remove`: `-r`.
+
+Расширения разделяются пробелами. Запятые запрещены. Поддерживаются составные расширения, например `.tar.gz`.
+
+## Команда log
+
+```text
+zibrasharp log
 zibrasharp log --lines 200
+zibrasharp log -n 20
 ```
 
-### `pending`
+Показывает последние N строк текущего `zibra.log` (по умолчанию 50). Форма `--lines=N` тоже поддерживается.
 
-- `pending` — list archives waiting for upload.
-- `pending upload` — retry every queued archive.
+Если лог ещё не создавался, выводит:
 
-### Global options
+```text
+Log file does not exist yet.
+```
 
-| Option | Description |
+## Команда pending
+
+```text
+zibrasharp pending
+zibrasharp pending upload
+```
+
+| Команда | Что делает |
 |---|---|
-| `--verbose` | Enable debug logging. |
+| `pending` | Показывает архивы, ожидающие загрузки |
+| `pending upload` | Пробует загрузить все архивы из очереди |
 
-## Exit codes
+`pending upload` возвращает `2`, если хотя бы один архив остался в очереди.
 
-| Code | Meaning |
+## Команды version и help
+
+```text
+zibrasharp version
+zibrasharp --version
+zibrasharp help
+zibrasharp --help
+zibrasharp -h
+```
+
+Пример:
+
+```text
+zibrasharp 1.0.0
+```
+
+## Глобальные флаги
+
+| Флаг | Описание |
 |---|---|
-| `0` | Success. |
-| `1` | Configuration, validation, or unexpected error. |
-| `2` | Archive created, but upload failed; the archive is kept and queued. |
-| `130` | Cancelled with Ctrl+C. |
+| `--verbose` | Включает debug-логирование |
 
-## Files
+Пример:
 
-All runtime files live in the current working directory unless noted otherwise:
+```powershell
+zibrasharp start C:\Data --verbose
+```
 
-| File | Purpose |
+## Коды выхода
+
+| Код | Значение |
 |---|---|
-| `zipdir.json` | Backup directory (`{"zipdir":"..."}`). |
-| `extensions.json` | Excluded extensions (`{".exe":true}`). Legacy `extentions.json` is read as a fallback. |
-| `pending.json` | Queue of archives waiting for upload. |
-| `token.json` | Google OAuth token. |
-| `zibra.log` | JSON-lines log. Rotated to `zibra.1.log`, `zibra.2.log`, … |
-| `credentials.json` | Google OAuth client (never committed). |
+| `0` | Успех |
+| `1` | Ошибка конфигурации, валидации или неожиданная ошибка |
+| `2` | Архив создан, но загрузка не удалась; архив в очереди |
+| `130` | Отменено Ctrl+C |
 
-`credentials.json`, `token.json`, `zipdir.json`, `extensions.json`, `pending.json`, `*.zip`, and `*.log` are ignored by Git.
+## Рабочие файлы
 
-## Offline behavior
+Все файлы создаются в текущей рабочей папке, если не указано иное.
 
-`LazyGoogleDriveApi` initializes OAuth and the network client only when an upload starts. Therefore:
+| Файл | Назначение |
+|---|---|
+| `credentials.json` | OAuth-клиент Google (не коммитить) |
+| `token.json` | Токен доступа; создаётся автоматически |
+| `zipdir.json` | Папка для архивов |
+| `extensions.json` | Исключаемые расширения |
+| `extentions.json` | Старое имя файла расширений; читается как fallback |
+| `pending.json` | Очередь архивов на загрузку |
+| `zibra.log` | JSON-лог |
+| `zibra.1.log` … `zibra.5.log` | Ротированные логи |
 
-1. The archive is always created first.
-2. If the cloud is unreachable, the archive is **not** deleted.
-3. Its path is written to `pending.json`.
-4. The next `start` (or `pending upload`) retries the upload.
+`credentials.json`, `token.json`, `zipdir.json`, `extensions.json`, `pending.json`, `*.zip` и `*.log` добавлены в `.gitignore`.
 
-This prevents data loss when the network is unavailable.
+## Офлайн-режим и очередь загрузки
 
-## Logging
+`LazyGoogleDriveApi` инициализирует OAuth и сетевой клиент только при первой загрузке. Поэтому:
 
-The log is JSON-lines, one event per line:
+1. Архив создаётся всегда первым.
+2. Если облако недоступно, архив **не удаляется**.
+3. Его путь записывается в `pending.json`.
+4. Следующий `start` или `pending upload` повторяет загрузку.
+
+Это защищает от потери данных при проблемах с сетью.
+
+## Логирование
+
+Лог пишется в формате JSON Lines — один объект на строку:
 
 ```json
 {"time":"2026-11-08T12:00:00.0000000+00:00","level":"INFO","msg":"Files found","Count":128}
 ```
 
-- Levels: `DEBUG`, `INFO`, `WARN`, `ERROR`.
-- Errors include the exception type, message, stack trace, and inner exceptions.
-- The log rotates at 10 MB and keeps 5 rotated files by default.
-- The file is created lazily on the first event.
+- Уровни: `DEBUG`, `INFO`, `WARN`, `ERROR`.
+- Для ошибок сохраняются тип исключения, сообщение, stack trace и вложенные исключения.
+- Файл создаётся лениво, при первом событии.
+- Ротация: при достижении 10 МБ; хранится 5 ротированных файлов.
+- Просмотр: `zibrasharp log --lines 200`.
 
-## Development
+## Разработка
 
-Build:
+Сборка:
 
-```bash
-dotnet build ZibraSharp/ZibraSharp.sln
+```powershell
+dotnet build .\ZibraSharp\ZibraSharp.sln
 ```
 
-Run tests:
+Тесты:
 
-```bash
-dotnet test ZibraSharp.Tests/ZibraSharp.Tests.csproj
+```powershell
+dotnet test .\ZibraSharp.Tests\ZibraSharp.Tests.csproj
 ```
 
-Run benchmarks:
+Release-сборка и тесты:
 
-```bash
-dotnet run --project ZibraSharp.Benchmarks/ZibraSharp.Benchmarks.csproj -c Release
+```powershell
+dotnet build .\ZibraSharp\ZibraSharp.sln -c Release
+dotnet test .\ZibraSharp.Tests\ZibraSharp.Tests.csproj -c Release --no-build
 ```
 
-List available benchmarks:
+## Бенчмарки
 
-```bash
-dotnet run --project ZibraSharp.Benchmarks/ZibraSharp.Benchmarks.csproj -c Release -- --list flat
+Запустить все бенчмарки:
+
+```powershell
+dotnet run --project .\ZibraSharp.Benchmarks\ZibraSharp.Benchmarks.csproj -c Release
 ```
 
-Run a specific suite:
+Показать список бенчмарков:
 
-```bash
-dotnet run --project ZibraSharp.Benchmarks/ZibraSharp.Benchmarks.csproj -c Release -- --filter *ZipArchiverBenchmarks*
+```powershell
+dotnet run --project .\ZibraSharp.Benchmarks\ZibraSharp.Benchmarks.csproj -c Release -- --list flat
 ```
 
-## Project structure
+Запустить конкретный набор:
+
+```powershell
+dotnet run --project .\ZibraSharp.Benchmarks\ZibraSharp.Benchmarks.csproj -c Release -- --filter *ZipArchiverBenchmarks*
+```
+
+Быстрая проверка без полноценных замеров:
+
+```powershell
+dotnet run --project .\ZibraSharp.Benchmarks\ZibraSharp.Benchmarks.csproj -c Release -- --filter *ZipArchiverBenchmarks* --job dry
+```
+
+Что измеряется:
+
+- архиватор при 1 и 4 воркерах;
+- рекурсивный обход папки;
+- парсинг списка расширений;
+- запись 100 JSON-событий;
+- атомарная запись файла.
+
+## Структура проекта
 
 ```text
 ZibraSharp/
-  CLI/                     Command-line entry point and argument parsing
+  CLI/                     Командная строка и разбор аргументов
   Internal/
-    Api/                   Google Drive client, credentials, token store
-    Archivers/             Parallel ZIP writer and CRC32
-    Config/                zipdir.json and extensions.json
-    Exceptions/            AppException and error codes
-    IO/                    Atomic file writes
-    Logger/                JSON-lines logger with rotation
-    Ports/                 Interfaces and shared records
-    Services/              Backup flow, pending uploads, queue store
-    Walkers/               Recursive directory scanner
-ZibraSharp.Tests/          xUnit tests
-ZibraSharp.Benchmarks/     BenchmarkDotNet benchmarks
+    Api/                   Google Drive, credentials, token store
+    Archivers/             Параллельный ZIP-writer и CRC32
+    Config/                zipdir.json и extensions.json
+    Exceptions/            AppException и коды ошибок
+    IO/                    Атомарная запись файлов
+    Logger/                JSON-логгер с ротацией
+    Ports/                 Интерфейсы и общие record-типы
+    Services/              Сценарий backup, pending-загрузка, очередь
+    Walkers/               Рекурсивный сканер папок
+ZibraSharp.Tests/          Тесты xUnit
+ZibraSharp.Benchmarks/     Бенчмарки BenchmarkDotNet
 ```
 
-## Security notes
+## Безопасность
 
-- Never commit `credentials.json` or `token.json`.
-- The OAuth token is a secret; on Unix it is written with owner-only permissions.
-- Archives are uploaded to the Drive account that authorized the token. Verify the account before the first production run.
+- Никогда не коммить `credentials.json` и `token.json`.
+- Токен — секрет; на Unix он записывается с правами `0600`.
+- Архивы загружаются в аккаунт Drive, который авторизовал токен. Перед боевым запуском проверь аккаунт.
+- Scope `drive.file` даёт доступ только к файлам, созданным приложением.
+
+## Решение проблем
+
+### `zibrasharp` не распознаётся в PowerShell
+
+PowerShell не запускает программы из текущей папки по имени. Используй:
+
+```powershell
+.\zibrasharp.exe
+```
+
+или добавь папку в `PATH` (см. раздел «Установка»).
+
+### `credentials.json not found`
+
+Проверь, что файл лежит в текущей рабочей папке или путь задан через `CREDENTIALS_ZIBRA`:
+
+```powershell
+$env:CREDENTIALS_ZIBRA = "C:\ZibraSharp\credentials.json"
+```
+
+Также проверь, что JSON — это OAuth-клиент типа **Desktop app**, а Google Drive API включён.
+
+### `Backup directory is not configured`
+
+Выполни:
+
+```powershell
+zibrasharp settings C:\Backups
+```
+
+Папка должна существовать.
+
+### `Archive already exists`
+
+Укажи другое имя или добавь `--force`:
+
+```powershell
+zibrasharp start C:\Data --force
+```
+
+### `Operation cancelled`
+
+Нажат Ctrl+C. Архив, который не успел создаться, удаляется; существующий архив не повреждается.
+
+### Браузер не открывается при OAuth
+
+Первый запуск требует браузер для согласия. На headless-сервере авторизацию нужно выполнить на машине с браузером и перенести `token.json`.
+
+### Загрузка не удалась
+
+Архив останется на диске и попадёт в очередь. Проверь:
+
+```powershell
+zibrasharp pending
+zibrasharp log --lines 100
+```
+
+Повторить загрузку:
+
+```powershell
+zibrasharp pending upload
+```
+
+### `Unknown option`
+
+Проверь написание флага. Список всех флагов — в разделе [Все команды кратко](#все-команды-кратко).
