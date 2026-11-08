@@ -17,12 +17,22 @@ namespace ZibraSharp.Internal.Services
         private readonly IApiCloud _api;
         private readonly ILogger _logger;
         private readonly IPendingUploadStore _store;
+        private readonly bool _keepArchive;
 
-        public PendingUploader(IApiCloud api, ILogger logger, IPendingUploadStore store)
+        /// <param name="keepArchive">
+        /// When true, successfully uploaded archives are kept on disk instead of
+        /// being deleted (useful for auditing or for copying to another location).
+        /// </param>
+        public PendingUploader(
+            IApiCloud api,
+            ILogger logger,
+            IPendingUploadStore store,
+            bool keepArchive = false)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _store = store ?? throw new ArgumentNullException(nameof(store));
+            _keepArchive = keepArchive;
         }
 
         public Task<IReadOnlyList<string>> GetPendingAsync(CancellationToken ct = default)
@@ -44,7 +54,15 @@ namespace ZibraSharp.Internal.Services
                 _logger.Info("Upload completed", "Path", archivePath);
 
                 await _store.RemoveAsync(archivePath, ct).ConfigureAwait(false);
-                TryDeleteArchive(archivePath);
+
+                if (_keepArchive)
+                {
+                    _logger.Info("Archive kept after upload", "Path", archivePath);
+                }
+                else
+                {
+                    TryDeleteArchive(archivePath);
+                }
 
                 return new ServiceResult(ServiceStatus.Completed, archivePath);
             }

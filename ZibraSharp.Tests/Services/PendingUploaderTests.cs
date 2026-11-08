@@ -123,6 +123,26 @@ namespace ZibraSharp.Tests.Services
         }
 
         [Fact]
+        public async Task UploadAsync_WithKeepArchive_KeepsUploadedArchive()
+        {
+            using var temp = new TempDirectory();
+            var archive = temp.CreateFile("a.zip", "a");
+            var store = new InMemoryPendingUploadStore();
+            await store.AddAsync(archive);
+            var uploader = new PendingUploader(
+                new FakeApiCloud(),
+                new FakeLogger(),
+                store,
+                keepArchive: true);
+
+            var result = await uploader.UploadAsync(archive);
+
+            Assert.Equal(ServiceStatus.Completed, result.Status);
+            Assert.True(File.Exists(archive));
+            Assert.Empty(store.Paths);
+        }
+
+        [Fact]
         public void Constructor_RejectsNullDependencies()
         {
             var api = new FakeApiCloud();

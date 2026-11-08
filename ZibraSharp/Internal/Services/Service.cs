@@ -24,7 +24,8 @@ namespace ZibraSharp.Internal.Services
             IArchiver archiver,
             IApiCloud api,
             ILogger logger,
-            IPendingUploadStore pendingUploads)
+            IPendingUploadStore pendingUploads,
+            bool keepArchive = false)
         {
             _walker = walker ?? throw new ArgumentNullException(nameof(walker));
             _archiver = archiver ?? throw new ArgumentNullException(nameof(archiver));
@@ -40,10 +41,12 @@ namespace ZibraSharp.Internal.Services
                 throw new ArgumentNullException(nameof(pendingUploads));
             }
 
-            _pendingUploader = new PendingUploader(api, logger, pendingUploads);
+            _pendingUploader = new PendingUploader(api, logger, pendingUploads, keepArchive);
         }
 
-        public async Task<ServiceResult> RunAsync(CancellationToken ct = default)
+        public async Task<ServiceResult> RunAsync(
+            CancellationToken ct = default,
+            IProgress<ArchiveProgress>? progress = null)
         {
             var paths = await _walker.WalkAsync(ct).ConfigureAwait(false);
             if (paths.Count == 0)
@@ -57,7 +60,7 @@ namespace ZibraSharp.Internal.Services
 
             _logger.Info("Files found", "Count", paths.Count);
 
-            var archivePath = await _archiver.StartAsync(paths, ct).ConfigureAwait(false);
+            var archivePath = await _archiver.StartAsync(paths, ct, progress).ConfigureAwait(false);
             _logger.Info("Archive created", "Path", archivePath);
 
             return await _pendingUploader.UploadAsync(archivePath, ct).ConfigureAwait(false);

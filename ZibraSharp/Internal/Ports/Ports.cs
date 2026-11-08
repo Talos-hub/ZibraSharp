@@ -30,8 +30,12 @@ namespace ZibraSharp.Internal.Ports
         /// </summary>
         /// <param name="paths">Paths to the files that must be archived.</param>
         /// <param name="ct">Cancellation token.</param>
+        /// <param name="progress">Optional per-file progress reporter.</param>
         /// <returns>Full path to the created archive.</returns>
-        Task<string> StartAsync(IReadOnlyList<string> paths, CancellationToken ct = default);
+        Task<string> StartAsync(
+            IReadOnlyList<string> paths,
+            CancellationToken ct = default,
+            IProgress<ArchiveProgress>? progress = null);
     }
 
     /// <summary>
@@ -117,7 +121,9 @@ namespace ZibraSharp.Internal.Ports
         /// Runs the full backup flow. If the cloud is unavailable the archive is kept
         /// and registered in <see cref="IPendingUploadStore"/> for a later retry.
         /// </summary>
-        Task<ServiceResult> RunAsync(CancellationToken ct = default);
+        Task<ServiceResult> RunAsync(
+            CancellationToken ct = default,
+            IProgress<ArchiveProgress>? progress = null);
 
         /// <summary>
         /// Returns archives waiting for upload.
@@ -143,4 +149,9 @@ namespace ZibraSharp.Internal.Ports
     }
 
     public sealed record ServiceResult(ServiceStatus Status, string ArchivePath, Exception? Error = null);
+
+    /// <summary>
+    /// Progress of the archiving stage.
+    /// </summary>
+    public sealed record ArchiveProgress(int Processed, int Total, string FilePath);
 }

@@ -203,6 +203,56 @@ namespace ZibraSharp.Tests.Services
         }
 
         [Fact]
+        public async Task RunAsync_WithKeepArchive_DoesNotDeleteUploadedArchive()
+        {
+            using var temp = new TempDirectory();
+            var archivePath = Path.Combine(temp.Path, "out", "backup.zip");
+            var pending = new InMemoryPendingUploadStore();
+            var service = new Service(
+                new FakeWalker { Paths = new[] { "a.txt" } },
+                new FakeArchiver { ArchivePath = archivePath },
+                new FakeApiCloud(),
+                new FakeLogger(),
+                pending,
+                keepArchive: true);
+
+            var result = await service.RunAsync();
+
+            Assert.Equal(ServiceStatus.Completed, result.Status);
+            Assert.True(File.Exists(archivePath));
+            Assert.Empty(pending.Paths);
+        }
+
+        [Fact]
+        public async Task RunAsync_ForwardsProgressToArchiver()
+        {
+            using var temp = new TempDirectory();
+            var archivePath = Path.Combine(temp.Path, "out", "backup.zip");
+            var archiver = new FakeArchiver { ArchivePath = archivePath };
+            var service = new Service(
+                new FakeWalker { Paths = new[] { "a.txt", "b.txt" } },
+                archiver,
+                new FakeApiCloud(),
+                new FakeLogger(),
+                new InMemoryPendingUploadStore());
+
+            var reports = new List<ArchiveProgress>();
+            var progress = new Progress<ArchiveProgress>(reports.Add);
+
+            await service.RunAsync(progress: progress);
+
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (reports.Count == 0 && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(10);
+            }
+
+            Assert.NotNull(archiver.LastProgress);
+            Assert.Single(reports);
+            Assert.Equal(2, reports[0].Total);
+        }
+
+        [Fact]
         public void Constructor_RejectsNullDependencies()
         {
             var walker = new FakeWalker();

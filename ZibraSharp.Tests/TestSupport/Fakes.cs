@@ -67,9 +67,13 @@ namespace ZibraSharp.Tests.TestSupport
         public string ArchivePath { get; set; } = string.Empty;
         public Exception? Exception { get; set; }
         public IReadOnlyList<string>? ReceivedPaths { get; private set; }
+        public ArchiveProgress? LastProgress { get; private set; }
         public int Calls { get; private set; }
 
-        public Task<string> StartAsync(IReadOnlyList<string> paths, CancellationToken ct = default)
+        public Task<string> StartAsync(
+            IReadOnlyList<string> paths,
+            CancellationToken ct = default,
+            IProgress<ArchiveProgress>? progress = null)
         {
             Calls++;
             ReceivedPaths = paths;
@@ -86,6 +90,14 @@ namespace ZibraSharp.Tests.TestSupport
             }
 
             System.IO.File.WriteAllText(ArchivePath, "fake archive");
+
+            if (progress is not null && paths.Count > 0)
+            {
+                var last = new ArchiveProgress(paths.Count, paths.Count, paths[^1]);
+                LastProgress = last;
+                progress.Report(last);
+            }
+
             return Task.FromResult(ArchivePath);
         }
     }

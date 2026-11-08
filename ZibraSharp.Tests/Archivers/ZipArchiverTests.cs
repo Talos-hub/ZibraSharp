@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ZibraSharp.Internal.Archivers;
 using ZibraSharp.Internal.Exceptions;
+using ZibraSharp.Internal.Ports;
 using ZibraSharp.Tests.TestSupport;
 
 namespace ZibraSharp.Tests.Archiving
@@ -135,6 +136,102 @@ namespace ZibraSharp.Tests.Archiving
 
             Assert.Equal(AppErrorCode.Create, exception.Code);
             Assert.Equal("do not overwrite", await File.ReadAllTextAsync(existingArchive));
+        }
+
+        [Fact]
+        public async Task StartAsync_WithOverwrite_ReplacesExistingArchive()
+        {
+            using var temp = new TempDirectory();
+            var source = temp.CreateDirectory("source");
+            var output = temp.CreateDirectory("output");
+            var file = temp.CreateFile(Path.Combine("source", "a.txt"), "new content");
+            var existingArchive = Path.Combine(output, "backup.zip");
+            await File.WriteAllTextAsync(existingArchive, "old archive");
+
+            var archiver = new ZipArchiver(output, source, "backup.zip", overwrite: true);
+            var archivePath = await archiver.StartAsync(new[] { file });
+
+            using var zip = ZipFile.OpenRead(archivePath);
+            Assert.Equal("new content", ReadEntry(zip, "a.txt"));
+        }
+
+        [Fact]
+        public async Task StartAsync_WithOverwrite_KeepsExistingArchive_WhenCompressionFails()
+        {
+            using var temp = new TempDirectory();
+            var source = temp.CreateDirectory("source");
+            var output = temp.CreateDirectory("output");
+            var missing = Path.Combine(source, "missing.txt");
+            var existingArchive = Path.Combine(output, "backup.zip");
+            await File.WriteAllTextAsync(existingArchive, "do not destroy");
+
+            var archiver = new ZipArchiver(output, source, "backup.zip", overwrite: true);
+            var exception = await Assert.ThrowsAsync<AppException>(() => archiver.StartAsync(new[] { missing }));
+
+            Assert.Equal(AppErrorCode.Read, exception.Code);
+            Assert.Equal("do not destroy", await File.ReadAllTextAsync(existingArchive));
+        }
+
+        [Fact]
+        public async Task StartAsync_ReportsProgressForEveryFile()
+        {
+            using var temp = new TempDirectory();
+            var source = temp.CreateDirectory("source");
+            var output = temp.CreateDirectory("output");
+            var files = new[]
+            {
+                temp.CreateFile(Path.Combine("source", "a.txt"), "a"),
+                temp.CreateFile(Path.Combine("source", "b.txt"), "b"),
+                temp.CreateFile(Path.Combine("source", "c.txt"), "c")
+            };
+
+            var reports = new List<ArchiveProgress>();
+            var progress = new Progress<ArchiveProgress>(reports.Add);
+            var archiver = new ZipArchiver(output, source, "backup.zip", maxWorkers: 1);
+
+            await archiver.StartAsync(files, progress: progress);
+
+            // Progress<T> posts to the captured context; wait for all callbacks.
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (reports.Count < files.Length && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(files.Length, reports.Count);
+            Assert.All(reports, report => Assert.Equal(files.Length, report.Total));
+            Assert.Equal(
+                Enumerable.Range(1, files.Length),
+                reports.Select(report => report.Processed).OrderBy(value => value));
+            Assert.All(reports, report => Assert.Contains(report.FilePath, files));
+        }
+
+        [Fact]
+        public async Task StartAsync_DoesNotLeaveTemporaryFiles()
+        {
+            using var temp = new TempDirectory();
+            var source = temp.CreateDirectory("source");
+            var output = temp.CreateDirectory("output");
+            var file = temp.CreateFile(Path.Combine("source", "a.txt"), "a");
+
+            var archiver = new ZipArchiver(output, source, "backup.zip");
+            await archiver.StartAsync(new[] { file });
+
+            Assert.Single(Directory.GetFiles(output));
+        }
+
+        [Fact]
+        public async Task StartAsync_DoesNotLeaveTemporaryFiles_WhenItFails()
+        {
+            using var temp = new TempDirectory();
+            var source = temp.CreateDirectory("source");
+            var output = temp.CreateDirectory("output");
+            var missing = Path.Combine(source, "missing.txt");
+
+            var archiver = new ZipArchiver(output, source, "backup.zip");
+            await Assert.ThrowsAsync<AppException>(() => archiver.StartAsync(new[] { missing }));
+
+            Assert.Empty(Directory.GetFiles(output));
         }
 
         [Fact]

@@ -26,12 +26,19 @@ namespace ZibraSharp.Internal.Archivers
         private readonly string _basePath;
         private readonly string _nameZip;
         private readonly int _maxWorkers;
+        private readonly bool _overwrite;
 
         /// <param name="pathToFolder">Directory where the archive will be created.</param>
         /// <param name="basePath">Root directory used to calculate relative paths inside the archive.</param>
         /// <param name="nameZip">Archive file name, for example "backup.zip".</param>
         /// <param name="maxWorkers">Number of compression workers. 0 or less means <see cref="Environment.ProcessorCount"/>.</param>
-        public ZipArchiver(string pathToFolder, string basePath, string nameZip, int maxWorkers = 0)
+        /// <param name="overwrite">When true, an existing archive is replaced atomically after the new one is fully written.</param>
+        public ZipArchiver(
+            string pathToFolder,
+            string basePath,
+            string nameZip,
+            int maxWorkers = 0,
+            bool overwrite = false)
         {
             _pathToFolder = Path.GetFullPath(pathToFolder ?? throw new ArgumentNullException(nameof(pathToFolder)));
             _basePath = Path.GetFullPath(basePath ?? throw new ArgumentNullException(nameof(basePath)));
@@ -43,9 +50,13 @@ namespace ZibraSharp.Internal.Archivers
 
             _nameZip = nameZip;
             _maxWorkers = maxWorkers > 0 ? maxWorkers : Math.Max(1, Environment.ProcessorCount);
+            _overwrite = overwrite;
         }
 
-        public async Task<string> StartAsync(IReadOnlyList<string> paths, CancellationToken ct = default)
+        public async Task<string> StartAsync(
+            IReadOnlyList<string> paths,
+            CancellationToken ct = default,
+            IProgress<ArchiveProgress>? progress = null)
         {
             if (paths is null)
             {
@@ -60,7 +71,7 @@ namespace ZibraSharp.Internal.Archivers
             ValidateFolders();
 
             var archivePath = Path.Combine(_pathToFolder, _nameZip);
-            if (File.Exists(archivePath))
+            if (File.Exists(archivePath) && !_overwrite)
             {
                 throw new AppException(
                     AppErrorCode.Create,
@@ -71,25 +82,36 @@ namespace ZibraSharp.Internal.Archivers
             var tempDir = Path.Combine(Path.GetTempPath(), "ZibraSharp", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempDir);
 
+            // Write next to the destination so the final move stays on the same
+            // volume and can be atomic. The existing archive is never touched
+            // until the new one is complete.
+            var tempArchivePath = Path.Combine(
+                _pathToFolder,
+                $".{_nameZip}.{Guid.NewGuid():N}.tmp");
+
             try
             {
-                var entries = await CompressAllAsync(paths, tempDir, ct).ConfigureAwait(false);
-                await WriteArchiveAsync(archivePath, entries, ct).ConfigureAwait(false);
+                var entries = await CompressAllAsync(paths, tempDir, progress, ct).ConfigureAwait(false);
+                await WriteArchiveAsync(tempArchivePath, entries, ct).ConfigureAwait(false);
+
+                ct.ThrowIfCancellationRequested();
+                File.Move(tempArchivePath, archivePath, overwrite: _overwrite);
+
                 return archivePath;
             }
             catch (OperationCanceledException)
             {
-                TryDeleteFile(archivePath);
+                TryDeleteFile(tempArchivePath);
                 throw;
             }
             catch (AppException)
             {
-                TryDeleteFile(archivePath);
+                TryDeleteFile(tempArchivePath);
                 throw;
             }
             catch (Exception ex)
             {
-                TryDeleteFile(archivePath);
+                TryDeleteFile(tempArchivePath);
                 throw new AppException(
                     AppErrorCode.Add,
                     nameof(StartAsync),
@@ -98,6 +120,7 @@ namespace ZibraSharp.Internal.Archivers
             }
             finally
             {
+                TryDeleteFile(tempArchivePath);
                 TryDeleteDirectory(tempDir);
             }
         }
@@ -105,9 +128,11 @@ namespace ZibraSharp.Internal.Archivers
         private async Task<CompressedEntry[]> CompressAllAsync(
             IReadOnlyList<string> paths,
             string tempDir,
+            IProgress<ArchiveProgress>? progress,
             CancellationToken ct)
         {
             var entries = new CompressedEntry[paths.Count];
+            var processed = 0;
             var options = new ParallelOptions
             {
                 MaxDegreeOfParallelism = _maxWorkers,
@@ -116,7 +141,11 @@ namespace ZibraSharp.Internal.Archivers
 
             await Parallel.ForEachAsync(Enumerable.Range(0, paths.Count), options, async (index, token) =>
             {
-                entries[index] = await CompressFileAsync(index, paths[index], tempDir, token).ConfigureAwait(false);
+                var entry = await CompressFileAsync(index, paths[index], tempDir, token).ConfigureAwait(false);
+                entries[index] = entry;
+
+                var done = Interlocked.Increment(ref processed);
+                progress?.Report(new ArchiveProgress(done, paths.Count, paths[index]));
             }).ConfigureAwait(false);
 
             return entries;
