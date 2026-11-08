@@ -15,4 +15,8 @@
     <Folder Include="Internal\Services\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Google.Apis.Drive.v3" Version="1.78.0.4313" />
+  </ItemGroup>
+
 </Project>

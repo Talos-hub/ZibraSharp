@@ -13,7 +13,10 @@ namespace ZibraSharp.Internal.Exceptions
         Open,
         Create,
         Add,
-        Upload
+        Upload,
+        Api,
+        Parse,
+        Config
     }
 
     /// <summary>

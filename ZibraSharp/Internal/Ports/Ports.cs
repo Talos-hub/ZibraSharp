@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using ZibraSharp.Internal.Config;
+using ZibraSharp.Internal.Exceptions;
 
 namespace ZibraSharp.Internal.Ports
 {
@@ -52,7 +54,7 @@ namespace ZibraSharp.Internal.Ports
         /// <summary>
         /// Checks that the cloud is reachable and the credentials are valid.
         /// </summary>
-        /// <exception cref="Exceptions.AppException">Thrown when the cloud is unavailable.</exception>
+        /// <exception cref="AppException">Thrown when the cloud is unavailable.</exception>
         Task CheckAsync(CancellationToken ct = default);
 
         /// <summary>
@@ -72,6 +74,38 @@ namespace ZibraSharp.Internal.Ports
         Task<IReadOnlyList<string>> GetAllAsync(CancellationToken ct = default);
         Task AddAsync(string archivePath, CancellationToken ct = default);
         Task RemoveAsync(string archivePath, CancellationToken ct = default);
+    }
+
+    /// <summary>
+    /// Provides configuration for the application.
+    /// </summary>
+    public interface IConfig
+    {
+        /// <summary>
+        /// Loads the backup directory from zipdir.json.
+        /// </summary>
+        /// <returns>Configuration or null when the file does not exist.</returns>
+        Task<ZipDirConfig?> GetDirAsync(CancellationToken ct = default);
+
+        /// <summary>
+        /// Writes the backup directory to zipdir.json.
+        /// </summary>
+        Task SetZipDirAsync(string path, CancellationToken ct = default);
+
+        /// <summary>
+        /// Loads excluded extensions. A missing file means "no exclusions".
+        /// </summary>
+        Task<IReadOnlySet<string>> GetExtensionsAsync(CancellationToken ct = default);
+
+        /// <summary>
+        /// Parses user input (for example ".exe .txt") and writes extensions.json.
+        /// </summary>
+        Task<IReadOnlySet<string>> CreateExtensionsAsync(string input, CancellationToken ct = default);
+
+        /// <summary>
+        /// Deletes the extensions file.
+        /// </summary>
+        Task RemoveExtensionsFileAsync(CancellationToken ct = default);
     }
 
     /// <summary>

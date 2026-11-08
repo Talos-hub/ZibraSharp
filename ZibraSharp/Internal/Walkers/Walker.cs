@@ -18,14 +18,17 @@ namespace ZibraSharp.Internal.Walkers
         /// </summary>
         private readonly string _pathToDir;
 
+        private readonly IConfig _config;
+
         /// <summary>
         /// Options for scanning a dir.
         /// </summary>
         private readonly EnumerationOptions _options;
 
-        public Walker(string pathToDir)
+        public Walker(string pathToDir, IConfig config)
         {
             _pathToDir = pathToDir ?? throw new ArgumentNullException(nameof(pathToDir));
+            _config = config ?? throw new ArgumentNullException(nameof(config));
 
             // set up options
             _options = new EnumerationOptions
@@ -38,10 +41,10 @@ namespace ZibraSharp.Internal.Walkers
         }
 
         /// <summary>
-        /// This method scans the directory.
+        /// This method scans the directory and filters excluded extensions.
         /// </summary>
         /// <returns>A collection containing file paths.</returns>
-        public Task<IReadOnlyList<string>> WalkAsync(CancellationToken ct = default)
+        public async Task<IReadOnlyList<string>> WalkAsync(CancellationToken ct = default)
         {
             if (!Directory.Exists(_pathToDir))
             {
@@ -52,13 +55,71 @@ namespace ZibraSharp.Internal.Walkers
             }
 
             var paths = new List<string>();
-            foreach (var file in Directory.EnumerateFiles(_pathToDir, "*", _options))
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                paths.Add(file);
+                foreach (var file in Directory.EnumerateFiles(_pathToDir, "*", _options))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    paths.Add(file);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new AppException(
+                    AppErrorCode.Read,
+                    nameof(WalkAsync),
+                    $"Failed to scan directory: {_pathToDir}",
+                    ex);
             }
 
-            return Task.FromResult<IReadOnlyList<string>>(paths);
+            if (paths.Count == 0)
+            {
+                return paths;
+            }
+
+            var extensions = await _config.GetExtensionsAsync(ct).ConfigureAwait(false);
+            return Match(paths, extensions);
+        }
+
+        /// <summary>
+        /// Removes files whose names end with one of the excluded extensions.
+        /// </summary>
+        private static IReadOnlyList<string> Match(
+            IReadOnlyList<string> paths,
+            IReadOnlySet<string> extensions)
+        {
+            if (extensions.Count == 0)
+            {
+                return paths;
+            }
+
+            var result = new List<string>(paths.Count);
+            foreach (var path in paths)
+            {
+                var fileName = Path.GetFileName(path);
+                var excluded = false;
+
+                foreach (var extension in extensions)
+                {
+                    if (string.IsNullOrEmpty(extension))
+                    {
+                        continue;
+                    }
+
+                    if (fileName.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+                    {
+                        excluded = true;
+                        break;
+                    }
+                }
+
+                if (!excluded)
+                {
+                    result.Add(path);
+                }
+            }
+
+            return result;
         }
     }
 }

@@ -43,3 +43,12 @@ _ReSharper*/
 # OS
 .DS_Store
 Thumbs.db
+
+# ZibraSharp runtime files (secrets and local state)
+credentials.json
+token.json
+zipdir.json
+extensions.json
+extentions.json
+pending.json
+*.zip
