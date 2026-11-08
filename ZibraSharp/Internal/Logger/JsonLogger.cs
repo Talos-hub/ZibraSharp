@@ -35,9 +35,10 @@ namespace ZibraSharp.Internal.Logger
         };
 
         private readonly object _sync = new();
-        private readonly StreamWriter _writer;
+        private readonly string _filePath;
         private readonly LogLevel _minimumLevel;
         private readonly TextWriter? _consoleWriter;
+        private StreamWriter? _writer;
         private bool _disposed;
 
         /// <param name="filePath">Path to the JSON-lines log file. Parent directories are created automatically.</param>
@@ -53,26 +54,7 @@ namespace ZibraSharp.Internal.Logger
                 throw new ArgumentException("Log file path must not be empty.", nameof(filePath));
             }
 
-            var fullPath = Path.GetFullPath(filePath);
-            var directory = Path.GetDirectoryName(fullPath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            var stream = new FileStream(
-                fullPath,
-                FileMode.Append,
-                FileAccess.Write,
-                FileShare.Read,
-                4096,
-                FileOptions.None);
-
-            _writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
-            {
-                AutoFlush = true
-            };
-
+            _filePath = Path.GetFullPath(filePath);
             _minimumLevel = minimumLevel;
             _consoleWriter = consoleWriter;
         }
@@ -98,7 +80,7 @@ namespace ZibraSharp.Internal.Logger
                 }
 
                 _disposed = true;
-                _writer.Dispose();
+                _writer?.Dispose();
             }
         }
 
@@ -118,9 +100,32 @@ namespace ZibraSharp.Internal.Logger
                     return;
                 }
 
+                _writer ??= CreateWriter();
                 _writer.WriteLine(line);
                 _consoleWriter?.WriteLine(line);
             }
+        }
+
+        private StreamWriter CreateWriter()
+        {
+            var directory = Path.GetDirectoryName(_filePath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var stream = new FileStream(
+                _filePath,
+                FileMode.Append,
+                FileAccess.Write,
+                FileShare.Read,
+                4096,
+                FileOptions.None);
+
+            return new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
+            {
+                AutoFlush = true
+            };
         }
 
         private static string BuildLine(LogLevel level, string message, object?[] args, Exception? exception)

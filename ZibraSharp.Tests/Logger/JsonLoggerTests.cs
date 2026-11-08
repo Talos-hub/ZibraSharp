@@ -161,7 +161,21 @@ namespace ZibraSharp.Tests.Logging
         }
 
         [Fact]
-        public void Constructor_CreatesMissingDirectoriesAndFile()
+        public void Constructor_DoesNotCreateLogFile()
+        {
+            using var temp = new TempDirectory();
+            var logPath = Path.Combine(temp.Path, "a", "b", "zibra.log");
+
+            using (var logger = new JsonLogger(logPath, LogLevel.Debug))
+            {
+                // No events are written.
+            }
+
+            Assert.False(File.Exists(logPath));
+        }
+
+        [Fact]
+        public void Write_CreatesMissingDirectoriesAndFile()
         {
             using var temp = new TempDirectory();
             var logPath = Path.Combine(temp.Path, "a", "b", "zibra.log");
